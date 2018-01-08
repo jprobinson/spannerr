@@ -63,12 +63,8 @@ type (
 		smu      sync.Mutex
 		sessions map[string]bool
 
+		conn        string
 		maxSessions int
-
-		conn      string
-		project   string
-		instances string
-		database  string
 	}
 )
 
