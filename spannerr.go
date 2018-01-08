@@ -72,6 +72,7 @@ func NewClient(project, instances, database string, maxSessions int) Client {
 	return &client{
 		conn:        "projects/" + project + "/instances/" + instances + "/databases/" + database,
 		maxSessions: maxSessions,
+		sessions:    map[*session]bool{},
 	}
 }
 
