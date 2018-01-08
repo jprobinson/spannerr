@@ -1,3 +1,4 @@
+[![GoDoc](https://godoc.org/github.com/jprobinson/spannerr?status.svg)](https://godoc.org/github.com/jprobinson/spannerr)
 # Spanner R is a convenience wrapper for Google Cloud Spanner's REST client
 
 [Cloud Spanner' REST API docs](https://godoc.org/google.golang.org/api/spanner/v1)
