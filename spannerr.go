@@ -135,7 +135,7 @@ func (c *client) Close(ctx context.Context) error {
 	c.smu.Lock()
 	defer c.smu.Unlock()
 
-	for s, _ := range c.sessions {
+	for s := range c.sessions {
 		_, err := sess.Delete(s).Do()
 		if err != nil {
 			return err
