@@ -41,6 +41,8 @@ type (
 		// ExecuteSql: Executes an SQL query, returning all rows in a single reply.
 		// This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsExecuteSqlCall
 		ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string) (*spanner.ResultSet, error)
+		// Name returns the session identifier.
+		Name() string
 	}
 
 	// Param contains the information required to pass a parameter to a Cloud Spanner query.
@@ -57,7 +59,7 @@ type (
 
 	client struct {
 		smu      sync.Mutex
-		sessions map[*session]bool
+		sessions map[string]bool
 
 		maxSessions int
 
@@ -72,7 +74,7 @@ func NewClient(project, instances, database string, maxSessions int) Client {
 	return &client{
 		conn:        "projects/" + project + "/instances/" + instances + "/databases/" + database,
 		maxSessions: maxSessions,
-		sessions:    map[*session]bool{},
+		sessions:    map[string]bool{},
 	}
 }
 
@@ -85,20 +87,20 @@ func (c *client) AcquireSession(ctx context.Context) (Session, error) {
 		if err != nil {
 			return nil, err
 		}
-		c.sessions[sess] = true
+		c.sessions[sess.Name()] = true
 		return sess, nil
 	}
 	// range over existing sessions until we find a free one
-	for sess, taken := range c.sessions {
+	for name, taken := range c.sessions {
 		if !taken {
-			c.sessions[sess] = true
+			c.sessions[name] = true
 			// init the client for the session before passing it back
 			svc, err := newSpanner(ctx)
 			if err != nil {
 				return nil, errors.Wrap(err, "unable to init spanner service")
 			}
-			sess.sess = svc.Projects.Instances.Databases.Sessions
-			return sess, nil
+			return &session{name: name, sess: svc.Projects.Instances.Databases.Sessions},
+				nil
 		}
 	}
 	return nil, errors.New("all %d sessions are in use. you may need to increase your session pool size.")
@@ -120,19 +122,21 @@ func (c *client) newSession(ctx context.Context) (*session, error) {
 func (c *client) ReleaseSession(ctx context.Context, sess Session) {
 	c.smu.Lock()
 	defer c.smu.Unlock()
-	c.sessions[sess.(*session)] = false
-}
-
-func (s *session) delete(ctx context.Context) error {
-	_, err := s.sess.Delete(s.name).Do()
-	return err
+	c.sessions[sess.Name()] = false
 }
 
 func (c *client) Close(ctx context.Context) error {
+	svc, err := newSpanner(ctx)
+	if err != nil {
+		return errors.Wrap(err, "unable to init spanner service")
+	}
+	sess := svc.Projects.Instances.Databases.Sessions
+
 	c.smu.Lock()
 	defer c.smu.Unlock()
-	for sess, _ := range c.sessions {
-		err := sess.delete(ctx)
+
+	for s, _ := range c.sessions {
+		_, err := sess.Delete(s).Do()
 		if err != nil {
 			return err
 		}
@@ -144,6 +148,10 @@ func (s *session) Commit(ctx context.Context, mutations []*spanner.Mutation, opt
 	return s.sess.Commit(s.name, &spanner.CommitRequest{
 		Mutations: mutations, SingleUseTransaction: opts,
 	}).Context(ctx).Do()
+}
+
+func (s *session) Name() string {
+	return s.name
 }
 
 func (s *session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string) (*spanner.ResultSet, error) {
