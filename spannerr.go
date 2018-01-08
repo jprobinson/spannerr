@@ -1,5 +1,7 @@
 // Package spannerr (pronounced Spanner R, or Spanner-er) provides session management and
 // a simple interface for Google Cloud Spanner's REST API.
+// If you are not on running your services on Google App Engine, you should just use the
+// official Cloud Spanner (gRPC) client: https://godoc.org/cloud.google.com/go/spanner
 package spannerr
 
 import (
