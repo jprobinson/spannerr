@@ -1,3 +1,5 @@
+// Package spannerr (pronounced Spanner R, or Spanner-er) provides session management and
+// a simple interface for Google Cloud Spanner's REST API.
 package spannerr
 
 import (
