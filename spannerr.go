@@ -53,6 +53,8 @@ type (
 	Param struct {
 		Name  string
 		Value interface{}
+		// Type will be used to populate the spanner.Type.Code field. More details
+		// can be found here: https://godoc.org/google.golang.org/api/spanner/v1#Type
 		Type  string
 	}
 
