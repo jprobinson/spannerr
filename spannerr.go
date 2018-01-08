@@ -101,7 +101,8 @@ func (c *client) AcquireSession(ctx context.Context) (Session, error) {
 				nil
 		}
 	}
-	return nil, errors.New("all %d sessions are in use. you may need to increase your session pool size.")
+	return nil, errors.Errorf("all %d sessions are in use. you may need to increase your session pool size.",
+		len(c.sessions))
 }
 
 func (c *client) newSession(ctx context.Context) (*session, error) {
