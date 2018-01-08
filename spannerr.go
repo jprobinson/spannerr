@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
@@ -55,7 +56,7 @@ type (
 		Value interface{}
 		// Type will be used to populate the spanner.Type.Code field. More details
 		// can be found here: https://godoc.org/google.golang.org/api/spanner/v1#Type
-		Type  string
+		Type string
 	}
 
 	session struct {
@@ -65,10 +66,15 @@ type (
 
 	client struct {
 		smu      sync.Mutex
-		sessions map[string]bool
+		sessions map[string]*sessionInfo
 
 		conn        string
 		maxSessions int
+	}
+
+	sessionInfo struct {
+		inUse    bool
+		lastUsed time.Time
 	}
 )
 
@@ -77,9 +83,11 @@ func NewClient(project, instances, database string, maxSessions int) Client {
 	return &client{
 		conn:        "projects/" + project + "/instances/" + instances + "/databases/" + database,
 		maxSessions: maxSessions,
-		sessions:    map[string]bool{},
+		sessions:    map[string]*sessionInfo{},
 	}
 }
+
+var idleTimeout = 45 * time.Minute
 
 func (c *client) AcquireSession(ctx context.Context) (Session, error) {
 	c.smu.Lock()
@@ -90,13 +98,25 @@ func (c *client) AcquireSession(ctx context.Context) (Session, error) {
 		if err != nil {
 			return nil, err
 		}
-		c.sessions[sess.Name()] = true
+		c.sessions[sess.Name()] = &sessionInfo{inUse: true}
 		return sess, nil
 	}
 	// range over existing sessions until we find a free one
-	for name, taken := range c.sessions {
-		if !taken {
-			c.sessions[name] = true
+	for name, info := range c.sessions {
+		if info.inUse {
+			continue
+		}
+		// if session has been idle for too long, toss it out and make a new one
+		if time.Now().UTC().Sub(info.lastUsed) > idleTimeout {
+			delete(c.sessions, name)
+			sess, err := c.newSession(ctx)
+			if err != nil {
+				return nil, err
+			}
+			c.sessions[sess.Name()] = &sessionInfo{inUse: true}
+			return sess, nil
+		} else {
+			c.sessions[name] = &sessionInfo{inUse: true}
 			// init the client for the session before passing it back
 			svc, err := newSpanner(ctx)
 			if err != nil {
@@ -126,7 +146,7 @@ func (c *client) newSession(ctx context.Context) (*session, error) {
 func (c *client) ReleaseSession(ctx context.Context, sess Session) {
 	c.smu.Lock()
 	defer c.smu.Unlock()
-	c.sessions[sess.Name()] = false
+	c.sessions[sess.Name()] = &sessionInfo{inUse: false, lastUsed: time.Now().UTC()}
 }
 
 func (c *client) Close(ctx context.Context) error {
