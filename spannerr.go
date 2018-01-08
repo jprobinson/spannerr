@@ -68,6 +68,7 @@ type (
 	}
 )
 
+// NewClient returns a new Client implementation.
 func NewClient(project, instances, database string, maxSessions int) Client {
 	return &client{
 		conn:        "projects/" + project + "/instances/" + instances + "/databases/" + database,
@@ -166,7 +167,6 @@ func (s *session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMod
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to encode query params")
 	}
-	// look up all connections
 	res, err := s.sess.ExecuteSql(s.name, &spanner.ExecuteSqlRequest{
 		ParamTypes: pTypes,
 		Params:     pJSON,
