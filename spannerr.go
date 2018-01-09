@@ -92,16 +92,16 @@ func (c *Client) AcquireSession(ctx context.Context) (*Session, error) {
 			}
 			c.sessions[sess.name] = &sessionInfo{inUse: true}
 			return sess, nil
-		} else {
-			c.sessions[name] = &sessionInfo{inUse: true}
-			// init the client for the session before passing it back
-			svc, err := newSpanner(ctx)
-			if err != nil {
-				return nil, errors.Wrap(err, "unable to init spanner service")
-			}
-			return &Session{name: name, sess: svc.Projects.Instances.Databases.Sessions},
-				nil
 		}
+
+		c.sessions[name] = &sessionInfo{inUse: true}
+		// init the client for the session before passing it back
+		svc, err := newSpanner(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to init spanner service")
+		}
+		return &Session{name: name, sess: svc.Projects.Instances.Databases.Sessions},
+			nil
 	}
 	return nil, errors.Errorf("all %d sessions are in use. you may need to increase your session pool size.",
 		len(c.sessions))
@@ -151,7 +151,7 @@ func (c *Client) Close(ctx context.Context) error {
 	return nil
 }
 
-// Commit: Commits a transaction. The request includes the mutations to be applied to
+// Commit commits a transaction. The request includes the mutations to be applied to
 // rows in the database.
 // This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsService.Commit
 func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions) (*spanner.CommitResponse, error) {
@@ -160,6 +160,8 @@ func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opt
 	}).Context(ctx).Do()
 }
 
+// ExecuteSQL executes an SQL query, returning all rows in a single reply.
+// This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsExecuteSqlCall
 func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string) (*spanner.ResultSet, error) {
 	var (
 		pTypes = map[string]spanner.Type{}
