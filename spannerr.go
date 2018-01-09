@@ -21,55 +21,29 @@ import (
 
 type (
 	// Client allows users to manage sessions on Google Cloud Spanner.
-	Client interface {
-		// AcquireSession will pull an existing session from the local cache. If the session
-		// cache is not full, it will create a new session and put it in the cache.
-		// Users must pass the Session to ReleaseSession when work is complete.
-		AcquireSession(ctx context.Context) (Session, error)
-		// ReleaseSession will make the session available in the cache again. Call this after
-		// first acquiring a session.
-		ReleaseSession(context.Context, Session)
-
-		// Close will attempt to end all existing sessions. If you have shutdown hooks
-		// available for your instance type, call this then.
-		// If you do not have shutdown hooks, the sessions made will be closed automatically
-		// after one hour of idle time: https://cloud.google.com/spanner/docs/sessions
-		Close(context.Context) error
-	}
-
-	// Session represents a live session on Google Cloud Spanner.
-	Session interface {
-		// Commit: Commits a transaction. The request includes the mutations to be applied to
-		// rows in the database.
-		// This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsService.Commit
-		Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions) (*spanner.CommitResponse, error)
-		// ExecuteSql: Executes an SQL query, returning all rows in a single reply.
-		// This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsExecuteSqlCall
-		ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string) (*spanner.ResultSet, error)
-		// Name returns the session identifier.
-		Name() string
-	}
-
-	// Param contains the information required to pass a parameter to a Cloud Spanner query.
-	Param struct {
-		Name  string
-		Value interface{}
-		// Type will be used to populate the spanner.Type.Code field. More details
-		// can be found here: https://godoc.org/google.golang.org/api/spanner/v1#Type
-		Type string
-	}
-
-	session struct {
-		name string
-		sess *spanner.ProjectsInstancesDatabasesSessionsService
-	}
-
-	client struct {
+	Client struct {
 		smu      sync.Mutex
 		sessions map[string]*sessionInfo
 
 		conn        string
 		maxSessions int
+	}
+
+	// Session represents a live session on Google Cloud Spanner.
+	Session struct {
+		name string
+		sess *spanner.ProjectsInstancesDatabasesSessionsService
+	}
+
+	// Param contains the information required to pass a parameter to a Cloud Spanner query.
+	Param struct {
+		// Name is the name of the parameter used within the sql.
+		Name string
+		// Value is the value of the parameter to pass into the query.
+		Value interface{}
+		// Type will be used to populate the spanner.Type.Code field. More details
+		// can be found here: https://godoc.org/google.golang.org/api/spanner/v1#Type
+		Type string
 	}
 
 	sessionInfo struct {
@@ -79,8 +53,8 @@ type (
 )
 
 // NewClient returns a new Client implementation.
-func NewClient(project, instances, database string, maxSessions int) Client {
-	return &client{
+func NewClient(project, instances, database string, maxSessions int) *Client {
+	return &Client{
 		conn:        "projects/" + project + "/instances/" + instances + "/databases/" + database,
 		maxSessions: maxSessions,
 		sessions:    map[string]*sessionInfo{},
@@ -89,7 +63,10 @@ func NewClient(project, instances, database string, maxSessions int) Client {
 
 var idleTimeout = 45 * time.Minute
 
-func (c *client) AcquireSession(ctx context.Context) (Session, error) {
+// AcquireSession will pull an existing session from the local cache. If the session
+// cache is not full, it will create a new session and put it in the cache.
+// Users must pass the Session to ReleaseSession when work is complete.
+func (c *Client) AcquireSession(ctx context.Context) (*Session, error) {
 	c.smu.Lock()
 	defer c.smu.Unlock()
 	// fill the buffer first
@@ -98,7 +75,7 @@ func (c *client) AcquireSession(ctx context.Context) (Session, error) {
 		if err != nil {
 			return nil, err
 		}
-		c.sessions[sess.Name()] = &sessionInfo{inUse: true}
+		c.sessions[sess.name] = &sessionInfo{inUse: true}
 		return sess, nil
 	}
 	// range over existing sessions until we find a free one
@@ -113,7 +90,7 @@ func (c *client) AcquireSession(ctx context.Context) (Session, error) {
 			if err != nil {
 				return nil, err
 			}
-			c.sessions[sess.Name()] = &sessionInfo{inUse: true}
+			c.sessions[sess.name] = &sessionInfo{inUse: true}
 			return sess, nil
 		} else {
 			c.sessions[name] = &sessionInfo{inUse: true}
@@ -122,7 +99,7 @@ func (c *client) AcquireSession(ctx context.Context) (Session, error) {
 			if err != nil {
 				return nil, errors.Wrap(err, "unable to init spanner service")
 			}
-			return &session{name: name, sess: svc.Projects.Instances.Databases.Sessions},
+			return &Session{name: name, sess: svc.Projects.Instances.Databases.Sessions},
 				nil
 		}
 	}
@@ -130,7 +107,7 @@ func (c *client) AcquireSession(ctx context.Context) (Session, error) {
 		len(c.sessions))
 }
 
-func (c *client) newSession(ctx context.Context) (*session, error) {
+func (c *Client) newSession(ctx context.Context) (*Session, error) {
 	svc, err := newSpanner(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to init spanner service")
@@ -140,16 +117,22 @@ func (c *client) newSession(ctx context.Context) (*session, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to init spanner session")
 	}
-	return &session{name: resp.Name, sess: sess}, nil
+	return &Session{name: resp.Name, sess: sess}, nil
 }
 
-func (c *client) ReleaseSession(ctx context.Context, sess Session) {
+// ReleaseSession will make the session available in the cache again. Call this after
+// first acquiring a session.
+func (c *Client) ReleaseSession(ctx context.Context, sess Session) {
 	c.smu.Lock()
 	defer c.smu.Unlock()
-	c.sessions[sess.Name()] = &sessionInfo{inUse: false, lastUsed: time.Now().UTC()}
+	c.sessions[sess.name] = &sessionInfo{inUse: false, lastUsed: time.Now().UTC()}
 }
 
-func (c *client) Close(ctx context.Context) error {
+// Close will attempt to end all existing sessions. If you have shutdown hooks
+// available for your instance type, call this then.
+// If you do not have shutdown hooks, the sessions made will be closed automatically
+// after one hour of idle time: https://cloud.google.com/spanner/docs/sessions
+func (c *Client) Close(ctx context.Context) error {
 	svc, err := newSpanner(ctx)
 	if err != nil {
 		return errors.Wrap(err, "unable to init spanner service")
@@ -168,17 +151,16 @@ func (c *client) Close(ctx context.Context) error {
 	return nil
 }
 
-func (s *session) Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions) (*spanner.CommitResponse, error) {
+// Commit: Commits a transaction. The request includes the mutations to be applied to
+// rows in the database.
+// This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsService.Commit
+func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions) (*spanner.CommitResponse, error) {
 	return s.sess.Commit(s.name, &spanner.CommitRequest{
 		Mutations: mutations, SingleUseTransaction: opts,
 	}).Context(ctx).Do()
 }
 
-func (s *session) Name() string {
-	return s.name
-}
-
-func (s *session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string) (*spanner.ResultSet, error) {
+func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string) (*spanner.ResultSet, error) {
 	var (
 		pTypes = map[string]spanner.Type{}
 		pVals  = map[string]interface{}{}
