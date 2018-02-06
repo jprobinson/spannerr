@@ -44,6 +44,10 @@ type (
 		// Type will be used to populate the spanner.Type.Code field. More details
 		// can be found here: https://godoc.org/google.golang.org/api/spanner/v1#Type
 		Type string
+		// ArrayElementType will be used to populate the spanner.Type.Code field of a
+		// nested array type. More details can be found here:
+		// https://godoc.org/google.golang.org/api/spanner/v1#Type
+		ArrayElementType string
 	}
 
 	sessionInfo struct {
@@ -168,7 +172,11 @@ func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMod
 		pVals  = map[string]interface{}{}
 	)
 	for _, p := range params {
-		pTypes[p.Name] = spanner.Type{Code: p.Type}
+		var aryType *spanner.Type
+		if p.ArrayElementType != "" {
+			aryType = &spanner.Type{Code: p.ArrayElementType}
+		}
+		pTypes[p.Name] = spanner.Type{Code: p.Type, ArrayElementType: aryType}
 		pVals[p.Name] = p.Value
 	}
 	pJSON, err := json.Marshal(pVals)
