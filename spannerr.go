@@ -155,6 +155,11 @@ func (c *Client) Close(ctx context.Context) error {
 	return nil
 }
 
+// BeginTransaction starts a new transaction.
+func (s *Session) BeginTransaction(ctx context.Context, opts *spanner.BeginTransactionRequest) (*spanner.Transaction, error) {
+	return s.sess.BeginTransaction(s.name, opts).Context(ctx).Do()
+}
+
 // Commit commits a transaction. The request includes the mutations to be applied to
 // rows in the database.
 // This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsService.Commit
