@@ -163,9 +163,11 @@ func (s *Session) BeginTransaction(ctx context.Context, opts *spanner.BeginTrans
 // Commit commits a transaction. The request includes the mutations to be applied to
 // rows in the database.
 // This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsService.Commit
-func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions) (*spanner.CommitResponse, error) {
+func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions, txID string) (*spanner.CommitResponse, error) {
 	return s.sess.Commit(s.name, &spanner.CommitRequest{
-		Mutations: mutations, SingleUseTransaction: opts,
+		Mutations:            mutations,
+		SingleUseTransaction: opts,
+		TransactionId:        txID,
 	}).Context(ctx).Do()
 }
 
