@@ -161,7 +161,8 @@ func (s *Session) BeginTransaction(ctx context.Context, opts *spanner.BeginTrans
 }
 
 // Commit commits a transaction. The request includes the mutations to be applied to
-// rows in the database.
+// rows in the database. Including opts signals a one-off query, whereas including txID
+// signals this commit is part of a larger transaction.
 // This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsService.Commit
 func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions, txID string) (*spanner.CommitResponse, error) {
 	return s.sess.Commit(s.name, &spanner.CommitRequest{
@@ -172,6 +173,8 @@ func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opt
 }
 
 // ExecuteSQL executes an SQL query, returning all rows in a single reply.
+// It can be called within a transaction by including a TransactionSelector
+// with its Id field set.
 // This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsExecuteSqlCall
 func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string, tx *spanner.TransactionSelector) (*spanner.ResultSet, error) {
 	var (
