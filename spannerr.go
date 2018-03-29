@@ -155,18 +155,28 @@ func (c *Client) Close(ctx context.Context) error {
 	return nil
 }
 
+// BeginTransaction starts a new transaction.
+func (s *Session) BeginTransaction(ctx context.Context, opts *spanner.BeginTransactionRequest) (*spanner.Transaction, error) {
+	return s.sess.BeginTransaction(s.name, opts).Context(ctx).Do()
+}
+
 // Commit commits a transaction. The request includes the mutations to be applied to
-// rows in the database.
+// rows in the database. Including opts signals a one-off query, whereas including txID
+// signals this commit is part of a larger transaction.
 // This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsService.Commit
-func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions) (*spanner.CommitResponse, error) {
+func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opts *spanner.TransactionOptions, txID string) (*spanner.CommitResponse, error) {
 	return s.sess.Commit(s.name, &spanner.CommitRequest{
-		Mutations: mutations, SingleUseTransaction: opts,
+		Mutations:            mutations,
+		SingleUseTransaction: opts,
+		TransactionId:        txID,
 	}).Context(ctx).Do()
 }
 
 // ExecuteSQL executes an SQL query, returning all rows in a single reply.
+// It can be called within a transaction by including a TransactionSelector
+// with its Id field set.
 // This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsExecuteSqlCall
-func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string) (*spanner.ResultSet, error) {
+func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string, tx *spanner.TransactionSelector) (*spanner.ResultSet, error) {
 	var (
 		pTypes = map[string]spanner.Type{}
 		pVals  = map[string]interface{}{}
@@ -184,10 +194,11 @@ func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMod
 		return nil, errors.Wrap(err, "unable to encode query params")
 	}
 	res, err := s.sess.ExecuteSql(s.name, &spanner.ExecuteSqlRequest{
-		ParamTypes: pTypes,
-		Params:     pJSON,
-		QueryMode:  queryMode,
-		Sql:        sql,
+		ParamTypes:  pTypes,
+		Params:      pJSON,
+		QueryMode:   queryMode,
+		Sql:         sql,
+		Transaction: tx,
 	}).Context(ctx).Do()
 	return res, errors.Wrap(err, "unable to execute query")
 }
