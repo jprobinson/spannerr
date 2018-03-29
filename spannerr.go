@@ -171,7 +171,7 @@ func (s *Session) Commit(ctx context.Context, mutations []*spanner.Mutation, opt
 
 // ExecuteSQL executes an SQL query, returning all rows in a single reply.
 // This function wraps https://godoc.org/google.golang.org/api/spanner/v1#ProjectsInstancesDatabasesSessionsExecuteSqlCall
-func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string) (*spanner.ResultSet, error) {
+func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMode string, tx *spanner.TransactionSelector) (*spanner.ResultSet, error) {
 	var (
 		pTypes = map[string]spanner.Type{}
 		pVals  = map[string]interface{}{}
@@ -189,10 +189,11 @@ func (s *Session) ExecuteSQL(ctx context.Context, params []*Param, sql, queryMod
 		return nil, errors.Wrap(err, "unable to encode query params")
 	}
 	res, err := s.sess.ExecuteSql(s.name, &spanner.ExecuteSqlRequest{
-		ParamTypes: pTypes,
-		Params:     pJSON,
-		QueryMode:  queryMode,
-		Sql:        sql,
+		ParamTypes:  pTypes,
+		Params:      pJSON,
+		QueryMode:   queryMode,
+		Sql:         sql,
+		Transaction: tx,
 	}).Context(ctx).Do()
 	return res, errors.Wrap(err, "unable to execute query")
 }
