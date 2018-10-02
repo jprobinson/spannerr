@@ -160,6 +160,13 @@ func (s *Session) BeginTransaction(ctx context.Context, opts *spanner.BeginTrans
 	return s.sess.BeginTransaction(s.name, opts).Context(ctx).Do()
 }
 
+// Rollback rolls back a transaction.
+func (s *Session) Rollback(ctx context.Context, txID string) error {
+	_, err := s.sess.Rollback(s.name,
+		&spanner.RollbackRequest{TransactionId: txID}).Context(ctx).Do()
+	return err
+}
+
 // Commit commits a transaction. The request includes the mutations to be applied to
 // rows in the database. Including opts signals a one-off query, whereas including txID
 // signals this commit is part of a larger transaction.
